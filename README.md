@@ -1,19 +1,18 @@
-# AI Toolkit
+# @stuseek/ai-toolkit
 
 <p align="center">
   <strong>🧠 The 4 fundamental operations that power every AI application</strong>
 </p>
 
 <p align="center">
-  <a href="https://docs.aitoolkit.test">📚 Full Documentation</a> •
-  <a href="https://aitoolkit.test">🌐 Website</a> •
-  <a href="https://github.com/aitoolkit/ai-toolkit">GitHub</a>
+  <a href="https://github.com/stuseek/ai-toolkit">GitHub</a> •
+  <a href="https://www.npmjs.com/package/@stuseek/ai-toolkit">NPM Package</a>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/ai-toolkit"><img src="https://img.shields.io/npm/v/ai-toolkit.svg" alt="NPM Version"></a>
-  <a href="https://www.npmjs.com/package/ai-toolkit"><img src="https://img.shields.io/npm/dm/ai-toolkit.svg" alt="Downloads"></a>
-  <a href="https://github.com/aitoolkit/ai-toolkit/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/ai-toolkit.svg" alt="License"></a>
+  <a href="https://www.npmjs.com/package/@stuseek/ai-toolkit"><img src="https://img.shields.io/npm/v/@stuseek/ai-toolkit.svg" alt="NPM Version"></a>
+  <a href="https://www.npmjs.com/package/@stuseek/ai-toolkit"><img src="https://img.shields.io/npm/dm/@stuseek/ai-toolkit.svg" alt="Downloads"></a>
+  <a href="https://github.com/stuseek/ai-toolkit/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/@stuseek/ai-toolkit.svg" alt="License"></a>
 </p>
 
 ---
@@ -59,25 +58,12 @@ Choose actions intelligently
 npm install @stuseek/ai-toolkit
 ```
 
-### Optional: Enable Telemetry & Analytics (Free)
-
-Create a free account at [aitoolkit.test](https://aitoolkit.test) to:
-- 📊 View usage statistics and dashboards
-- 🐛 Debug AI operations with detailed logs
-- 📈 Track performance metrics
-- 🔍 Analyze token usage and costs
-
-> 🔒 **Privacy First:** Telemetry sends **only aggregates** (duration, success/error, score, sizes) without any `input`, `output`, `content`, `subject`, `context`, or `result` data.
-
-No spam, ever. Just helpful insights into your AI usage.
-
 ```javascript
-const { extract, validate, summarize, decide, configure } = require('ai-toolkit');
+const { extract, validate, summarize, decide, configure } = require('@stuseek/ai-toolkit');
 
 // Configure once
 configure({ 
   engines: { openai: process.env.OPENAI_API_KEY },
-  token: 'aitk_free_xxxxx'  // Optional: Get from aitoolkit.test
 });
 
 // Build anything
@@ -109,7 +95,7 @@ async function handleCustomerEmail(email) {
 Let's build a **production-ready customer support system** in 30 lines:
 
 ```javascript
-const AIToolkit = require('ai-toolkit');
+const { AIToolkit } = require('@stuseek/ai-toolkit');
 
 const supportAI = new AIToolkit({
   preset: 'customer_support', // Pre-tuned for support
@@ -171,9 +157,6 @@ async function handleTicket(email) {
 | **Stateful** | Persistent context across calls | `const ai = new AIToolkit({ basePrompt: '...' })` |
 | **Stateless** | Simple, one-off operations | `await extract(data, schema)` |
 
-- **Stateful** (`new AIToolkit(...)`) - Stores base prompt and context between calls
-- **Stateless** (functions `extract/validate/...`) - No state; add context per-call via `options.additionalContext`
-
 ### 3. **Production-Ready**
    ```javascript
    // All operations return consistent structure
@@ -185,35 +168,8 @@ async function handleTicket(email) {
    }
    ```
 
-### 4. **Stateful Context with Base Prompts**
-   ```javascript
-   // Create specialized AI instances that remember context
-   const securityAI = new AIToolkit({
-     basePrompt: "You are a paranoid security analyst. Always assume the worst.",
-     engines: { openai: 'sk-...' },
-     validateOutputs: true
-   });
-   
-   // Different AI personalities for different tasks
-   const creativeAI = new AIToolkit({
-     preset: 'marketing',  // Uses pre-defined marketing prompt
-     temperature: 0.6      // Higher temperature for creativity
-   });
-   ```
-
-### 5. **Industry Presets Available**
-   ```javascript
-   const { createAI } = require('ai-toolkit');
-   
-   const ai = createAI.medical();     // Conservative, safety-first
-   const ai = createAI.financial();   // Precise, audit-enabled
-   const ai = createAI.security();    // Paranoid, threat-focused
-   const ai = createAI.devops();      // Reliability-focused
-   const ai = createAI.engineering(); // Clean code focused
-   const ai = createAI.support();     // Empathetic, helpful
-   const ai = createAI.legal();       // Precise terminology
-   const ai = createAI.marketing();   // Creative, engaging
-   ```
+### 4. **TypeScript Support**
+   Full TypeScript definitions included in `src/index.d.ts` for type-safe development.
 
 ## 📚 The 4 Primitives API
 
@@ -222,6 +178,8 @@ async function handleTicket(email) {
 Transform unstructured data into structured format:
 
 ```javascript
+const { extract } = require('@stuseek/ai-toolkit');
+
 const result = await extract(
   "Order #12345 hasn't arrived. I'm angry! -John",
   {
@@ -251,6 +209,8 @@ const result = await extract(
 Assess data against criteria:
 
 ```javascript
+const { validate } = require('@stuseek/ai-toolkit');
+
 const result = await validate(
   'Is this a legitimate customer complaint?',
   complaintData,
@@ -272,6 +232,8 @@ const result = await validate(
 Create concise summaries:
 
 ```javascript
+const { summarize } = require('@stuseek/ai-toolkit');
+
 const result = await summarize(longDocument, {
   maxLength: 200,        // Character limit
   focus: 'key_insights'  // Focus area
@@ -291,6 +253,8 @@ const result = await summarize(longDocument, {
 Make intelligent choices:
 
 ```javascript
+const { decide } = require('@stuseek/ai-toolkit');
+
 const result = await decide(
   { situation: 'Customer is angry', history: '...' },
   ['escalate', 'respond', 'archive']
@@ -308,28 +272,23 @@ const result = await decide(
 
 ## 🔗 Advanced Features
 
-### Context Management
-
-Add context to improve AI responses:
+### Stateful Mode with AIToolkit Class
 
 ```javascript
-// STATEFUL: Persistent context across calls
-const ai = new AIToolkit({ engines: { openai: 'sk-...' } });
+const { AIToolkit } = require('@stuseek/ai-toolkit');
+
+// Create stateful instance with context
+const ai = new AIToolkit({
+  basePrompt: "You are a security analyst",
+  engines: { openai: 'sk-...' }
+});
+
+// Add persistent context
 ai.addContext('customer', { tier: 'premium', sla: '1 hour' });
 ai.addContext('session', { id: '12345', started: Date.now() });
 
-// All operations automatically include this context
+// All operations use this context
 const result = await ai.extract(data, schema);
-
-// STATELESS: Per-operation context
-const result = await extract(data, schema, {
-  additionalContext: { customer: { tier: 'premium' }, urgency: 'high' }
-});
-
-// MIXED: Both persistent and per-call context
-const decision = await ai.decide(context, actions, {
-  additionalContext: 'Executive review required for amounts over $10k'
-});
 ```
 
 ### Method Chaining
@@ -346,38 +305,42 @@ await ai.summarize();                   // Uses last validation
 await ai.decide(null, actions);         // Uses last summary
 ```
 
-### Pipelines
+### Industry Presets
 
-Create reusable workflows:
+Pre-configured instances for specific domains:
 
 ```javascript
-const fraudDetection = ai.pipeline(
-  async (transaction) => ai.extract(transaction, fraudSchema),
-  async (data) => ai.validate('Is this fraudulent?', data.data),
-  async (result) => ai.decide(result, ['block', 'allow', 'review'])
-);
+const { createAI } = require('@stuseek/ai-toolkit');
 
-// Use anywhere
-const result = await fraudDetection(transaction);
+const securityAI = createAI.security();   // Paranoid, threat-focused
+const medicalAI = createAI.medical();     // Conservative, safety-first
+const financialAI = createAI.financial(); // Precise, audit-enabled
+const legalAI = createAI.legal();         // Precise terminology
+const devopsAI = createAI.devops();       // Reliability-focused
+const supportAI = createAI.support();     // Empathetic, helpful
+const marketingAI = createAI.marketing(); // Creative, engaging
+const engineeringAI = createAI.engineering(); // Clean code focused
 ```
 
-### Context Extension
+### Action Execution (Experimental)
 
-Create specialized versions:
+Connect AI decisions to code:
 
 ```javascript
-const baseAI = new AIToolkit({
-  basePrompt: "You are an AI assistant.",
+const ai = new AIToolkit({ 
+  withExecutor: true,
   engines: { openai: 'sk-...' }
 });
 
-// Extend with more context
-const specializedAI = baseAI.withContext(
-  "You are specifically helping with database optimization."
-);
+// Register actions
+ai.registerAction('send_email', async (params) => {
+  await emailService.send(params);
+  return { sent: true };
+});
 
-// Switch domains
-const medicalAI = baseAI.forDomain('medical');
+// AI decides and executes
+const decision = await ai.decide(context, ['send_email', 'create_ticket']);
+const result = await ai.execute(decision);
 ```
 
 ## 🎛️ Configuration
@@ -385,7 +348,7 @@ const medicalAI = baseAI.forDomain('medical');
 ### Basic Setup
 
 ```javascript
-const { configure } = require('ai-toolkit');
+const { configure } = require('@stuseek/ai-toolkit');
 
 configure({
   engines: {
@@ -399,20 +362,6 @@ configure({
 });
 ```
 
-### Class-based Configuration
-
-```javascript
-const ai = new AIToolkit({
-  engines: {
-    openai: 'sk-...'
-  },
-  basePrompt: 'You are a helpful assistant',
-  temperature: 0.3,
-  validateOutputs: true,
-  withExecutor: true  // Enable action execution
-});
-```
-
 ### Environment Variables
 
 ```bash
@@ -422,7 +371,6 @@ ANTHROPIC_API_KEY=sk-ant-...
 AI_TOOLKIT_DEFAULT_ENGINE=openai
 AI_TOOLKIT_TEMPERATURE=0.3
 AI_TOOLKIT_MAX_TOKENS=1000
-AI_TOOLKIT_VALIDATE_OUTPUTS=true
 ```
 
 ### Configuration File
@@ -444,31 +392,19 @@ Create `ai-toolkit.config.json`:
 }
 ```
 
-## 📦 Action Execution
+## 📦 Available Exports
 
-Connect AI decisions to code:
+The package exports the following:
 
-```javascript
-const ai = new AIToolkit({ 
-  withExecutor: true,
-  engines: { openai: 'sk-...' }
-});
-
-// Register actions
-ai.registerAction('send_email', async (params) => {
-  await emailService.send(params);
-  return { sent: true };
-});
-
-ai.registerAction('create_ticket', async (params) => {
-  const ticket = await ticketSystem.create(params);
-  return { ticketId: ticket.id };
-});
-
-// AI decides and executes
-const decision = await ai.decide(context, ['send_email', 'create_ticket']);
-const result = await ai.execute(decision);
-```
+- `extract` - Extract structured data from unstructured input
+- `validate` - Validate data against criteria
+- `summarize` - Create summaries of content
+- `decide` - Make decisions from available options
+- `configure` - Configure the global instance
+- `AIToolkit` - Main class for stateful operations
+- `createAI` - Factory for creating preset instances
+- `execute` - Execute actions (requires withExecutor)
+- `presets` - Available industry presets
 
 ## 📊 Return Types
 
@@ -513,9 +449,7 @@ All primitives return consistent structure:
 }
 ```
 
-## 🏗️ Architecture Examples
-
-### Error Handling Pattern
+## 🏗️ Error Handling Pattern
 
 ```javascript
 async function safeProcess(data) {
@@ -538,36 +472,17 @@ async function safeProcess(data) {
 }
 ```
 
-### Parallel Processing
+## 📦 Package Details
 
-```javascript
-// Process multiple items in parallel
-const results = await Promise.all(
-  emails.map(email => 
-    extract(email, schema)
-      .then(r => validate('Is urgent?', r.data))
-      .then(v => decide(v, actions))
-  )
-);
-```
+- **Name**: @stuseek/ai-toolkit
+- **Version**: 1.0.3
+- **License**: MIT
+- **Node**: >=18.0.0
+- **TypeScript**: Included (`src/index.d.ts`)
 
-### Retry Logic
-
-```javascript
-async function withRetry(operation, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    const result = await operation();
-    if (result.success) return result;
-    
-    console.log(`Retry ${i + 1}/${maxRetries}...`);
-    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
-  }
-  throw new Error('Max retries exceeded');
-}
-
-// Usage
-const result = await withRetry(() => extract(data, schema));
-```
+### Peer Dependencies
+- `openai`: ^4.0.0 (optional)
+- `@anthropic-ai/sdk`: ^0.9.0 (optional)
 
 ## 🚨 Important Notes
 
@@ -588,7 +503,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🔗 Links
 
 - [GitHub Repository](https://github.com/stuseek/ai-toolkit)
-- [NPM Package](https://www.npmjs.com/package/ai-toolkit)
+- [NPM Package](https://www.npmjs.com/package/@stuseek/ai-toolkit)
 - [Report Issues](https://github.com/stuseek/ai-toolkit/issues)
 
 ---
