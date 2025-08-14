@@ -1,5 +1,5 @@
 {
-  "name": "ai-toolkit",
+  "name": "@stuseek/ai-toolkit",
   "version": "1.0.0",
   "description": "The 4 fundamental AI operations for building intelligent applications",
   "main": "src/index.js",

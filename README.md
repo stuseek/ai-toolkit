@@ -56,7 +56,7 @@ Choose actions intelligently
 ## 🚀 Quick Start
 
 ```bash
-npm install ai-toolkit
+npm install @stuseek/ai-toolkit
 ```
 
 ### Optional: Enable Telemetry & Analytics (Free)
