@@ -1,0 +1,100 @@
+{
+  "name": "ai-toolkit",
+  "version": "1.0.0",
+  "description": "The 4 fundamental AI operations for building intelligent applications",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:unit": "node test-unit.js",
+    "test:integration": "node test-improved.js",
+    "test:comprehensive": "node test-comprehensive.js",
+    "lint": "eslint src/**/*.js examples/**/*.js --fix",
+    "format": "prettier --write \"src/**/*.js\" \"examples/**/*.js\"",
+    "example:customer": "node examples/customer-support.js",
+    "example:devops": "node examples/devops-incident.js",
+    "example:cicd": "node examples/cicd-analyzer.js",
+    "validate": "npm run lint && npm test",
+    "prepublishOnly": "npm run validate",
+    "prepare": "echo 'Ready to publish'",
+    "version": "npm run validate && git add -A",
+    "postversion": "git push && git push --tags"
+  },
+  "keywords": [
+    "ai",
+    "artificial-intelligence",
+    "extract",
+    "validate",
+    "summarize",
+    "decide",
+    "llm",
+    "gpt",
+    "claude",
+    "primitives"
+  ],
+  "author": "AI Toolkit Team",
+  "homepage": "https://github.com/aitoolkit/ai-toolkit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aitoolkit/ai-toolkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aitoolkit/ai-toolkit/issues"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.2.5"
+  },
+  "peerDependencies": {
+    "openai": "^4.0.0",
+    "@anthropic-ai/sdk": "^0.9.0"
+  },
+  "peerDependenciesMeta": {
+    "openai": {
+      "optional": true
+    },
+    "@anthropic-ai/sdk": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "directories": {
+    "example": "examples",
+    "test": "test"
+  },
+  "types": "./src/index.d.ts",
+  "files": [
+    "src/index.js",
+    "src/config.js",
+    "src/telemetry.js",
+    "src/executor.js",
+    "src/index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/**/*.test.js",
+      "!src/**/__tests__/**"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    }
+  }
+}
