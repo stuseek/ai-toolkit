@@ -34,13 +34,13 @@
     "primitives"
   ],
   "author": "AI Toolkit Team",
-  "homepage": "https://github.com/aitoolkit/ai-toolkit#readme",
+  "homepage": "https://github.com/stuseek/ai-toolkit#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aitoolkit/ai-toolkit.git"
+    "url": "git+https://github.com/stuseek/ai-toolkit.git"
   },
   "bugs": {
-    "url": "https://github.com/aitoolkit/ai-toolkit/issues"
+    "url": "https://github.com/stuseek/ai-toolkit/issues"
   },
   "license": "MIT",
   "devDependencies": {

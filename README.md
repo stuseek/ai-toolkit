@@ -587,9 +587,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/aitoolkit/ai-toolkit)
+- [GitHub Repository](https://github.com/stuseek/ai-toolkit)
 - [NPM Package](https://www.npmjs.com/package/ai-toolkit)
-- [Report Issues](https://github.com/aitoolkit/ai-toolkit/issues)
+- [Report Issues](https://github.com/stuseek/ai-toolkit/issues)
 
 ---
 
