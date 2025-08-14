@@ -94,7 +94,7 @@ class AIToolkit {
     if (this.config.token || this.config.telemetryKey) {
       this.telemetry = new TelemetryClient({
         token: this.config.token || this.config.telemetryKey,
-        endpoint: this.config.telemetryEndpoint || 'https://telemetry.aitoolkit.dev',
+        endpoint: this.config.telemetryEndpoint || 'https://telemetry.aitoolkit.test',
         enabled: this.config.telemetry !== false
       });
       this.isPremium = this.telemetry.isPremium();
@@ -144,7 +144,7 @@ class AIToolkit {
    */
   getContextString() {
     if (this.context.size === 0) return '';
-    
+
     const contextParts = [];
     for (const [key, value] of this.context) {
       contextParts.push(`${key}: ${JSON.stringify(value)}`);
@@ -187,13 +187,13 @@ class AIToolkit {
    */
   buildMessages(systemPrompt, userPrompt, additionalContext = null) {
     let finalSystemPrompt = this.basePrompt ? `${this.basePrompt}\n\n${systemPrompt}` : systemPrompt;
-    
+
     // Add stored context for stateful mode
     const contextString = this.getContextString();
     if (contextString) {
       finalSystemPrompt += contextString;
     }
-    
+
     // Add additional context if provided
     if (additionalContext) {
       if (typeof additionalContext === 'string') {
@@ -202,7 +202,7 @@ class AIToolkit {
         finalSystemPrompt += `\n\nAdditional context: ${JSON.stringify(additionalContext)}`;
       }
     }
-    
+
     return {
       system: finalSystemPrompt,
       user: userPrompt
@@ -252,10 +252,10 @@ class AIToolkit {
       let response;
 
       if (client.cloudMode) {
-        throw new Error('Cloud mode requires AI Toolkit token. Get one at https://aitoolkit.dev');
+        throw new Error('Cloud mode requires AI Toolkit token. Get one at https://aitoolkit.test');
       } else {
         const { system, user } = messages;
-        
+
         switch (engine) {
         case 'openai': {
           const completion = await client.chat.completions.create({
@@ -340,13 +340,13 @@ class AIToolkit {
 
       const firstObject = cleaned.indexOf('{');
       const firstArray = cleaned.indexOf('[');
-      
+
       if (firstObject === -1 && firstArray === -1) {
         return JSON.parse(cleaned);
       }
 
       const isArray = firstArray !== -1 && (firstObject === -1 || firstArray < firstObject);
-      
+
       if (isArray) {
         let depth = 0;
         let start = firstArray;
@@ -716,7 +716,7 @@ class AIToolkit {
     if (!this.isPremium && !this.validateOutputs) {return null;}
 
     const system = 'Validate if the extraction was done correctly.';
-    const user = 
+    const user =
       `Original: ${JSON.stringify(originalData)}\n` +
       `Schema: ${JSON.stringify(schema)}\n` +
       `Extracted: ${JSON.stringify(extracted)}\n\n` +
@@ -734,20 +734,20 @@ class AIToolkit {
    */
   calculateConfidence(extracted, schema) {
     if (!extracted || extracted.error) {return 0;}
-    
+
     const schemaKeys = Object.keys(schema);
     if (schemaKeys.length === 0) {return 0;}
-    
+
     let filledCount = 0;
     let totalCount = schemaKeys.length;
-    
+
     for (const key of schemaKeys) {
       const value = extracted[key];
       if (value !== null && value !== undefined && value !== '') {
         filledCount++;
       }
     }
-    
+
     return filledCount / totalCount;
   }
 

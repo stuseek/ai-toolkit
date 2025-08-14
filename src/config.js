@@ -152,9 +152,9 @@ To get started, you need either:
 
 2. AI Toolkit Token (for cloud mode - no API keys needed):
    export AI_TOOLKIT_TOKEN=aitk_...
-   
-   Get your free token at: https://aitoolkit.dev
-   
+
+   Get your free token at: https://aitoolkit.test
+
 Or pass them directly:
    new AIToolkit({ engines: { openai: 'sk-...' } })
    new AIToolkit({ token: 'aitk_...' })

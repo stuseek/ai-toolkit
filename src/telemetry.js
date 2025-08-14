@@ -9,7 +9,7 @@ const crypto = require('crypto');
 class TelemetryClient {
   constructor(options = {}) {
     this.token = options.token;
-    this.endpoint = options.endpoint || 'https://telemetry.aitoolkit.dev';
+    this.endpoint = options.endpoint || 'https://telemetry.aitoolkit.test';
     this.enabled = options.enabled !== false && !!this.token;
     this.sessionId = this.generateSessionId();
     this.queue = [];

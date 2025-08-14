@@ -125,7 +125,7 @@ async function executorExample() {
 // ============================================
 async function cloudExample() {
   const ai = new AIToolkit({
-    token: 'aitk_free_abc123' // Get from https://aitoolkit.dev
+    token: 'aitk_free_abc123' // Get from https://aitoolkit.test
     // No API keys needed!
   });
 

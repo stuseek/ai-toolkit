@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <a href="https://docs.aitoolkit.dev">📚 Full Documentation</a> •
-  <a href="https://aitoolkit.dev">🌐 Website</a> •
+  <a href="https://docs.aitoolkit.test">📚 Full Documentation</a> •
+  <a href="https://aitoolkit.test">🌐 Website</a> •
   <a href="https://github.com/aitoolkit/ai-toolkit">GitHub</a>
 </p>
 
@@ -61,7 +61,7 @@ npm install @stuseek/ai-toolkit
 
 ### Optional: Enable Telemetry & Analytics (Free)
 
-Create a free account at [aitoolkit.dev](https://aitoolkit.dev) to:
+Create a free account at [aitoolkit.test](https://aitoolkit.test) to:
 - 📊 View usage statistics and dashboards
 - 🐛 Debug AI operations with detailed logs
 - 📈 Track performance metrics
@@ -77,7 +77,7 @@ const { extract, validate, summarize, decide, configure } = require('ai-toolkit'
 // Configure once
 configure({ 
   engines: { openai: process.env.OPENAI_API_KEY },
-  token: 'aitk_free_xxxxx'  // Optional: Get from aitoolkit.dev
+  token: 'aitk_free_xxxxx'  // Optional: Get from aitoolkit.test
 });
 
 // Build anything
