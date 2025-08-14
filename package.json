@@ -1,6 +1,6 @@
 {
   "name": "@stuseek/ai-toolkit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The 4 fundamental AI operations for building intelligent applications",
   "main": "src/index.js",
   "scripts": {
