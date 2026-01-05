@@ -1,6 +1,6 @@
 {
   "name": "@stuseek/ai-toolkit",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "The 4 fundamental AI operations for building intelligent applications",
   "main": "src/index.js",
   "scripts": {
@@ -50,7 +50,7 @@
   },
   "peerDependencies": {
     "openai": "^4.0.0",
-    "@anthropic-ai/sdk": "^0.9.0"
+    "@anthropic-ai/sdk": "^0.20.0"
   },
   "peerDependenciesMeta": {
     "openai": {
