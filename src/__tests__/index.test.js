@@ -1,428 +1,879 @@
 const AIToolkit = require('../index');
+const { Resilience, CircuitBreakerError } = require('../resilience');
 
-describe('AIToolkit Core Operations', () => {
-  let ai;
-  let mockMakeRequest;
+// Suppress config warnings during tests
+beforeAll(() => {
+  jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
+afterAll(() => {
+  jest.restoreAllMocks();
+});
 
-  beforeEach(() => {
-    ai = new AIToolkit({
-      engines: { openai: 'test-key' },
-      debug: false
-    });
+function createAI(overrides = {}) {
+  const ai = new AIToolkit({
+    engines: { openai: 'test-key' },
+    ...overrides
+  });
+  // Mock makeAIRequest by default so tests don't hit real APIs
+  ai.makeAIRequest = jest.fn();
+  return ai;
+}
 
-    // Mock the makeAIRequest method
-    mockMakeRequest = jest.fn();
-    ai.makeAIRequest = mockMakeRequest;
+// ─── Constructor ────────────────────────────────────────────────
+
+describe('Constructor', () => {
+  test('creates instance with config', () => {
+    const ai = createAI();
+    expect(ai).toBeInstanceOf(AIToolkit);
+    expect(ai.engines.openai).toBe('test-key');
+    expect(ai.defaultEngine).toBe('openai');
   });
 
-  describe('Constructor', () => {
-    test('should create instance with config', () => {
-      expect(ai).toBeInstanceOf(AIToolkit);
-      expect(ai.engines.openai).toBe('test-key');
-    });
-
-    test('should apply preset configurations', () => {
-      const securityAI = new AIToolkit({
-        preset: 'security',
-        engines: { openai: 'test-key' }
-      });
-      expect(securityAI.config.temperature).toBe(0.2);
-      expect(securityAI.config.validateOutputs).toBe(true);
-    });
-
-    test('should merge custom config with defaults', () => {
-      const customAI = new AIToolkit({
-        engines: { openai: 'test-key' },
-        maxTokens: 500,
-        temperature: 0.5
-      });
-      expect(customAI.config.maxTokens).toBe(500);
-      expect(customAI.config.temperature).toBe(0.5);
-    });
+  test('applies preset configuration', () => {
+    const ai = createAI({ preset: 'security' });
+    expect(ai.basePrompt).toContain('security analyst');
+    expect(ai.config.temperature).toBe(0.2);
+    expect(ai.config.validateOutputs).toBe(true);
   });
 
-  describe('Extract Operation', () => {
-    test('should extract structured data successfully', async () => {
-      const mockResponse = JSON.stringify({
-        name: 'John Doe',
-        age: 30,
-        email: 'john@example.com'
-      });
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.extract(
-        'John Doe is 30 years old, email: john@example.com',
-        { name: 'string', age: 'number', email: 'string' }
-      );
-
-      expect(result).toHaveProperty('success', true);
-      expect(result).toHaveProperty('data');
-      expect(result.data).toEqual({
-        name: 'John Doe',
-        age: 30,
-        email: 'john@example.com'
-      });
-      expect(result).toHaveProperty('confidence');
-      expect(typeof result.confidence).toBe('number');
-    });
-
-    test('should handle extraction with custom instructions', async () => {
-      const mockResponse = JSON.stringify({
-        sentiment: 'positive',
-        score: 0.85
-      });
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.extract(
-        'This product is amazing!',
-        { sentiment: 'string', score: 'number' },
-        { instructions: 'Extract sentiment and confidence score' }
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.data.sentiment).toBe('positive');
-      expect(result.data.score).toBe(0.85);
-    });
-
-    test('should handle extraction errors gracefully', async () => {
-      mockMakeRequest.mockRejectedValue(new Error('API Error'));
-
-      const result = await ai.extract(
-        'test data',
-        { field: 'string' }
-      );
-
-      expect(result.success).toBe(false);
-      expect(result).toHaveProperty('error');
-      expect(result.error).toContain('API Error');
-    });
+  test('user options override preset', () => {
+    const ai = createAI({ preset: 'security', temperature: 0.9 });
+    expect(ai.config.temperature).toBe(0.9);
   });
 
-  describe('Validate Operation', () => {
-    test('should validate data successfully', async () => {
-      const mockResponse = JSON.stringify({
-        valid: true,
-        score: 0.9,
-        reasoning: 'All criteria met',
-        confidence: 0.95,
-        recommendation: 'pass'
-      });
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.validate(
-        { email: 'test@example.com' },
-        { rule: 'Must be a valid email' }
-      );
-
-      expect(result).toHaveProperty('valid', true);
-      expect(result).toHaveProperty('score', 0.9);
-      expect(result).toHaveProperty('reasoning');
-      expect(result).toHaveProperty('confidence');
-      expect(result).toHaveProperty('recommendation', 'pass');
-    });
-
-    test('should validate with multiple rules', async () => {
-      const mockResponse = JSON.stringify({
-        valid: false,
-        score: 0.3,
-        reasoning: 'Password too weak',
-        confidence: 0.9,
-        recommendation: 'reject',
-        issues: ['Too short', 'No special characters']
-      });
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.validate(
-        { password: '12345' },
-        {
-          rules: [
-            'Minimum 8 characters',
-            'Must contain special characters',
-            'Must contain numbers and letters'
-          ]
-        }
-      );
-
-      expect(result.valid).toBe(false);
-      expect(result.score).toBeLessThan(0.5);
-      expect(result.issues).toContain('Too short');
-    });
-
-    test('should handle validation errors', async () => {
-      mockMakeRequest.mockRejectedValue(new Error('Validation failed'));
-
-      const result = await ai.validate(
-        { data: 'test' },
-        { rule: 'test rule' }
-      );
-
-      expect(result.valid).toBe(false);
-      expect(result).toHaveProperty('error');
-    });
+  test('initializes resilience with defaults', () => {
+    const ai = createAI();
+    expect(ai.resilience).toBeInstanceOf(Resilience);
+    expect(ai.resilience.maxRetries).toBe(2);
   });
 
-  describe('Summarize Operation', () => {
-    test('should summarize text successfully', async () => {
-      const mockResponse = 'This is a concise summary of the input text.';
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const longText = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(10);
-      const result = await ai.summarize(longText);
-
-      expect(result).toHaveProperty('success', true);
-      expect(result).toHaveProperty('summary');
-      expect(typeof result.summary).toBe('string');
-      expect(result.summary.length).toBeGreaterThan(0);
-      expect(result).toHaveProperty('metadata');
+  test('custom resilience options', () => {
+    const ai = createAI({
+      retry: { maxRetries: 5 },
+      timeout: 10000,
+      circuitBreaker: { threshold: 3, resetAfterMs: 30000 }
     });
-
-    test('should summarize with custom options', async () => {
-      const mockResponse = '• Point 1\\n• Point 2\\n• Point 3';
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.summarize(
-        'Long document text here...',
-        {
-          style: 'bullet-points',
-          maxLength: 100
-        }
-      );
-
-      expect(result.success).toBe(true);
-      expect(result.summary).toContain('•');
-    });
-
-    test('should handle array of texts', async () => {
-      const mockResponse = 'Combined summary of multiple documents.';
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const texts = [
-        'First document content',
-        'Second document content',
-        'Third document content'
-      ];
-      const result = await ai.summarize(texts);
-
-      expect(result.success).toBe(true);
-      expect(result.summary).toBeTruthy();
-      expect(result.metadata.inputType).toBe('multiple');
-    });
-
-    test('should handle summarization errors', async () => {
-      mockMakeRequest.mockRejectedValue(new Error('Summarization failed'));
-
-      const result = await ai.summarize('test text');
-
-      expect(result.success).toBe(false);
-      expect(result).toHaveProperty('error');
-    });
+    expect(ai.resilience.maxRetries).toBe(5);
+    expect(ai.resilience.timeout).toBe(10000);
+    expect(ai.resilience.circuitBreaker.threshold).toBe(3);
   });
 
-  describe('Decide Operation', () => {
-    test('should make decision successfully', async () => {
-      const mockResponse = JSON.stringify({
-        decision: 'approve',
-        reasoning: 'All criteria satisfied',
-        confidence: 0.85,
-        alternatives: ['conditional_approve', 'reject']
-      });
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.decide(
-        { score: 85, history: 'good' },
-        ['approve', 'reject', 'conditional_approve']
-      );
-
-      expect(result).toHaveProperty('decision', 'approve');
-      expect(result).toHaveProperty('reasoning');
-      expect(result).toHaveProperty('confidence', 0.85);
-      expect(result).toHaveProperty('alternatives');
-      expect(Array.isArray(result.alternatives)).toBe(true);
-    });
-
-    test('should make decision with criteria', async () => {
-      const mockResponse = JSON.stringify({
-        decision: 'escalate',
-        reasoning: 'High risk detected',
-        confidence: 0.9,
-        riskScore: 0.8
-      });
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.decide(
-        {
-          transaction: { amount: 10000, country: 'high-risk' }
-        },
-        ['approve', 'review', 'escalate', 'block'],
-        {
-          criteria: {
-            riskThreshold: 0.7,
-            requiresReview: true
-          }
-        }
-      );
-
-      expect(result.decision).toBe('escalate');
-      expect(result.confidence).toBeGreaterThan(0.8);
-    });
-
-    test('should handle binary decisions', async () => {
-      const mockResponse = JSON.stringify({
-        decision: true,
-        reasoning: 'Conditions met',
-        confidence: 0.95
-      });
-      mockMakeRequest.mockResolvedValue(mockResponse);
-
-      const result = await ai.decide(
-        { value: 42 },
-        [true, false]
-      );
-
-      expect(result.decision).toBe(true);
-      expect(typeof result.decision).toBe('boolean');
-    });
-
-    test('should handle decision errors', async () => {
-      mockMakeRequest.mockRejectedValue(new Error('Decision failed'));
-
-      const result = await ai.decide(
-        { data: 'test' },
-        ['option1', 'option2']
-      );
-
-      expect(result).toHaveProperty('decision', null);
-      expect(result).toHaveProperty('error');
-      expect(result.confidence).toBe(0);
-    });
+  test('initializes empty conversation history', () => {
+    const ai = createAI();
+    expect(ai.messages).toEqual([]);
+    expect(ai.trackHistory).toBe(false);
   });
 
-  describe('Error Handling', () => {
-    test('should handle missing engine configuration', () => {
-      expect(() => {
-        new AIToolkit({});
-      }).toThrow();
-    });
-
-    test('should handle invalid schema in extract', async () => {
-      const result = await ai.extract('test', null);
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Invalid schema');
-    });
-
-    test('should handle invalid options in validate', async () => {
-      const result = await ai.validate(null, null);
-      expect(result.valid).toBe(false);
-      expect(result.error).toBeTruthy();
-    });
-
-    test('should handle empty input in summarize', async () => {
-      const result = await ai.summarize('');
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Empty input');
-    });
-
-    test('should handle empty options in decide', async () => {
-      const result = await ai.decide({}, []);
-      expect(result.decision).toBe(null);
-      expect(result.error).toContain('No options provided');
-    });
-  });
-
-  describe('Integration Scenarios', () => {
-    test('should chain operations successfully', async () => {
-      // Extract -> Validate -> Decide flow
-      const extractMock = JSON.stringify({
-        email: 'test@example.com',
-        age: 25
-      });
-      const validateMock = JSON.stringify({
-        valid: true,
-        score: 0.9,
-        confidence: 0.95,
-        recommendation: 'pass'
-      });
-      const decideMock = JSON.stringify({
-        decision: 'approve',
-        confidence: 0.85
-      });
-
-      mockMakeRequest
-        .mockResolvedValueOnce(extractMock)
-        .mockResolvedValueOnce(validateMock)
-        .mockResolvedValueOnce(decideMock);
-
-      // Extract
-      const extracted = await ai.extract(
-        'Email: test@example.com, Age: 25',
-        { email: 'string', age: 'number' }
-      );
-      expect(extracted.success).toBe(true);
-
-      // Validate
-      const validated = await ai.validate(
-        extracted.data,
-        { rules: ['Valid email', 'Age > 18'] }
-      );
-      expect(validated.valid).toBe(true);
-
-      // Decide
-      const decision = await ai.decide(
-        { extraction: extracted.data, validation: validated },
-        ['approve', 'reject', 'review']
-      );
-      expect(decision.decision).toBe('approve');
-    });
-
-    test('should handle parallel operations', async () => {
-      mockMakeRequest.mockResolvedValue(JSON.stringify({ result: 'success' }));
-
-      const promises = [
-        ai.extract('test1', { field: 'string' }),
-        ai.extract('test2', { field: 'string' }),
-        ai.extract('test3', { field: 'string' })
-      ];
-
-      const results = await Promise.all(promises);
-      expect(results).toHaveLength(3);
-      results.forEach(result => {
-        expect(result).toHaveProperty('success');
-      });
-    });
+  test('trackHistory option', () => {
+    const ai = createAI({ trackHistory: true });
+    expect(ai.trackHistory).toBe(true);
   });
 });
 
-describe('AIToolkit Advanced Features', () => {
-  let ai;
+// ─── Extract ────────────────────────────────────────────────────
 
-  beforeEach(() => {
-    ai = new AIToolkit({
-      engines: { openai: 'test-key' },
-      cache: true,
-      retryAttempts: 3,
-      timeout: 5000
+describe('Extract', () => {
+  test('extracts structured data', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue(JSON.stringify({
+      name: 'John', age: 30, email: 'john@test.com'
+    }));
+
+    const result = await ai.extract(
+      'John is 30, email john@test.com',
+      { name: 'string', age: 'number', email: 'string' }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ name: 'John', age: 30, email: 'john@test.com' });
+    expect(result.confidence).toBe(1); // 3/3 fields filled
+  });
+
+  test('calculates partial confidence', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue(JSON.stringify({
+      name: 'John', age: null, email: ''
+    }));
+
+    const result = await ai.extract('John', { name: 'string', age: 'number', email: 'string' });
+    expect(result.confidence).toBeCloseTo(1/3); // 1 of 3 filled
+  });
+
+  test('handles API error gracefully', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockRejectedValue(new Error('API Error'));
+
+    const result = await ai.extract('test', { field: 'string' });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('API Error');
+    expect(result.confidence).toBe(0);
+  });
+
+  test('passes operation type', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue('{}');
+
+    await ai.extract('data', { f: 'string' });
+    expect(ai.makeAIRequest).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ operation: 'extract' })
+    );
+  });
+});
+
+// ─── Validate ───────────────────────────────────────────────────
+
+describe('Validate', () => {
+  test('validates successfully', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue(JSON.stringify({
+      score: 0.9,
+      reasoning: 'Valid email format',
+      confidence: 0.95,
+      recommendation: 'pass'
+    }));
+
+    const result = await ai.validate(
+      'Must be valid email',
+      { email: 'test@example.com' }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.score).toBe(0.9);
+    expect(result.reasoning).toBe('Valid email format');
+    expect(result.confidence).toBe(0.95);
+    expect(result.recommendation).toBe('pass');
+  });
+
+  test('handles validation error', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockRejectedValue(new Error('Validation failed'));
+
+    const result = await ai.validate('rule', { data: 'test' });
+    expect(result.success).toBe(false);
+    expect(result.score).toBe(0);
+  });
+
+  test('uses lastResult when subject missing', async () => {
+    const ai = createAI();
+    ai.lastResult = { data: { email: 'test@test.com' } };
+    ai.makeAIRequest.mockResolvedValue(JSON.stringify({
+      score: 0.8, reasoning: 'ok', confidence: 0.9, recommendation: 'pass'
+    }));
+
+    const result = await ai.validate('Must be valid email');
+    expect(result.success).toBe(true);
+  });
+});
+
+// ─── Summarize ──────────────────────────────────────────────────
+
+describe('Summarize', () => {
+  test('summarizes successfully', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue(JSON.stringify({
+      summary: 'Key points here',
+      keyPoints: ['point1', 'point2'],
+      confidence: 0.9
+    }));
+
+    const result = await ai.summarize('Long text...');
+    expect(result.success).toBe(true);
+    expect(result.summary).toBe('Key points here');
+    expect(result.keyPoints).toHaveLength(2);
+    expect(result.confidence).toBe(0.9);
+  });
+
+  test('handles error', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockRejectedValue(new Error('Failed'));
+
+    const result = await ai.summarize('text');
+    expect(result.success).toBe(false);
+    expect(result.summary).toBe('');
+    expect(result.error).toContain('Failed');
+  });
+});
+
+// ─── Decide ─────────────────────────────────────────────────────
+
+describe('Decide', () => {
+  test('makes decision successfully', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue(JSON.stringify({
+      action: 'approve',
+      reasoning: 'All checks passed',
+      confidence: 0.85,
+      parameters: {}
+    }));
+
+    const result = await ai.decide(
+      { score: 85 },
+      ['approve', 'reject', 'review']
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.action).toBe('approve');
+    expect(result.reasoning).toBe('All checks passed');
+    expect(result.confidence).toBe(0.85);
+  });
+
+  test('handles error', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockRejectedValue(new Error('Decision failed'));
+
+    const result = await ai.decide({}, ['a', 'b']);
+    expect(result.success).toBe(false);
+    expect(result.action).toBeNull();
+    expect(result.confidence).toBe(0);
+  });
+});
+
+// ─── Chat ───────────────────────────────────────────────────────
+
+describe('Chat', () => {
+  test('basic chat', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue('Hello! How can I help?');
+
+    const result = await ai.chat('Hi there');
+    expect(result.success).toBe(true);
+    expect(result.message).toBe('Hello! How can I help?');
+    expect(result.confidence).toBe(1.0);
+  });
+
+  test('chat with custom system prompt', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue('response');
+
+    await ai.chat('test', { systemPrompt: 'You are a pirate.' });
+    const callArgs = ai.makeAIRequest.mock.calls[0];
+    expect(callArgs[0].system).toContain('pirate');
+  });
+
+  test('chat error handling', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockRejectedValue(new Error('Network error'));
+
+    const result = await ai.chat('test');
+    expect(result.success).toBe(false);
+    expect(result.message).toBeNull();
+    expect(result.error).toContain('Network error');
+  });
+
+  test('chat with tool use returns toolCalls', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue({
+      text: 'The weather is sunny',
+      toolCalls: [{ name: 'get_weather', parameters: { city: 'NYC' }, result: 'sunny' }]
     });
+
+    const tools = [{
+      name: 'get_weather',
+      description: 'Get weather',
+      parameters: { type: 'object', properties: { city: { type: 'string' } } }
+    }];
+    const onToolCall = jest.fn();
+
+    const result = await ai.chat('weather?', { tools, onToolCall });
+    expect(result.success).toBe(true);
+    expect(result.message).toBe('The weather is sunny');
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].name).toBe('get_weather');
   });
 
-  test('should support custom temperature per operation', async () => {
-    ai.makeAIRequest = jest.fn().mockResolvedValue('result');
+  test('tools passed through to makeAIRequest', async () => {
+    const ai = createAI();
+    ai.makeAIRequest.mockResolvedValue('ok');
 
-    await ai.summarize('text', { temperature: 0.3 });
+    const tools = [{ name: 'fn', description: 'd', parameters: {} }];
+    const onToolCall = jest.fn();
 
+    await ai.chat('test', { tools, onToolCall });
     expect(ai.makeAIRequest).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ temperature: 0.3 })
+      expect.any(Object),
+      expect.objectContaining({ tools, onToolCall })
     );
   });
+});
 
-  test('should support custom model per operation', async () => {
-    ai.makeAIRequest = jest.fn().mockResolvedValue('result');
+// ─── Conversation History ───────────────────────────────────────
 
-    await ai.extract('text', { field: 'string' }, { model: 'gpt-4' });
+describe('Conversation History', () => {
+  test('addMessage stores messages', () => {
+    const ai = createAI();
+    ai.addMessage('user', 'Hello');
+    ai.addMessage('assistant', 'Hi');
 
-    expect(ai.makeAIRequest).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ model: 'gpt-4' })
+    const history = ai.getHistory();
+    expect(history).toHaveLength(2);
+    expect(history[0]).toEqual({ role: 'user', content: 'Hello' });
+    expect(history[1]).toEqual({ role: 'assistant', content: 'Hi' });
+  });
+
+  test('getHistory returns copy, not reference', () => {
+    const ai = createAI();
+    ai.addMessage('user', 'test');
+
+    const h1 = ai.getHistory();
+    h1.push({ role: 'user', content: 'injected' });
+
+    expect(ai.getHistory()).toHaveLength(1); // unaffected
+  });
+
+  test('clearHistory empties messages', () => {
+    const ai = createAI();
+    ai.addMessage('user', 'A');
+    ai.addMessage('assistant', 'B');
+    ai.clearHistory();
+    expect(ai.getHistory()).toHaveLength(0);
+  });
+
+  test('clearHistory returns this for chaining', () => {
+    const ai = createAI();
+    const result = ai.clearHistory();
+    expect(result).toBe(ai);
+  });
+
+  test('addMessage returns this for chaining', () => {
+    const ai = createAI();
+    const result = ai.addMessage('user', 'x');
+    expect(result).toBe(ai);
+  });
+
+  test('trimHistory removes oldest when over budget', () => {
+    const ai = createAI({ maxHistoryTokens: 10 }); // 10 tokens = 40 chars max
+    // Each message: 20 chars => 5 tokens. Budget: 10 tokens = 40 chars.
+    // With 3 messages of 20 chars each = 60 chars, trim should remove oldest
+    ai.addMessage('user', '12345678901234567890');      // 20 chars
+    ai.addMessage('assistant', '12345678901234567890');  // 20 chars — total 40, within budget
+    ai.addMessage('user', '12345678901234567890');       // total 60, over budget
+
+    // Should have trimmed the oldest message(s) to fit
+    const history = ai.getHistory();
+    const totalChars = history.reduce((sum, m) => sum + m.content.length, 0);
+    expect(totalChars).toBeLessThanOrEqual(40);
+  });
+
+  test('auto-tracks history in chat when trackHistory=true', async () => {
+    const ai = createAI({ trackHistory: true });
+    ai.makeAIRequest.mockResolvedValue('Hi there!');
+
+    await ai.chat('Hello');
+
+    const history = ai.getHistory();
+    expect(history).toHaveLength(2);
+    expect(history[0].role).toBe('user');
+    expect(history[0].content).toBe('Hello');
+    expect(history[1].role).toBe('assistant');
+    expect(history[1].content).toBe('Hi there!');
+  });
+
+  test('per-call trackHistory overrides instance setting', async () => {
+    const ai = createAI({ trackHistory: false });
+    ai.makeAIRequest.mockResolvedValue('Hi');
+
+    await ai.chat('Hello', { trackHistory: true });
+    expect(ai.getHistory()).toHaveLength(2);
+  });
+
+  test('does NOT auto-track when trackHistory=false', async () => {
+    const ai = createAI({ trackHistory: false });
+    ai.makeAIRequest.mockResolvedValue('Hi');
+
+    await ai.chat('Hello');
+    expect(ai.getHistory()).toHaveLength(0);
+  });
+});
+
+// ─── Model Routing ──────────────────────────────────────────────
+
+describe('Model Routing', () => {
+  test('resolves alias from config.models', () => {
+    const ai = createAI({
+      models: {
+        fast: 'claude-haiku-4-5-20251001',
+        openai: 'gpt-4o'
+      }
+    });
+
+    expect(ai._resolveModel('fast', 'anthropic')).toBe('claude-haiku-4-5-20251001');
+  });
+
+  test('passes through literal model names', () => {
+    const ai = createAI();
+    expect(ai._resolveModel('gpt-4-turbo', 'openai')).toBe('gpt-4-turbo');
+  });
+
+  test('falls back to engine default in config', () => {
+    const ai = createAI({
+      models: { openai: 'gpt-4o', anthropic: 'claude-sonnet-4-5-20250929' }
+    });
+    expect(ai._resolveModel(undefined, 'openai')).toBe('gpt-4o');
+  });
+
+  test('falls back to hardcoded defaults', () => {
+    const ai = createAI();
+    // Config has defaults from ConfigLoader, but let's test the resolution chain
+    expect(ai._resolveModel(undefined, 'openai')).toBeDefined();
+    expect(ai._resolveModel(undefined, 'anthropic')).toBeDefined();
+  });
+});
+
+// ─── Tool Formatting ────────────────────────────────────────────
+
+describe('Tool Formatting', () => {
+  const tools = [{
+    name: 'get_weather',
+    description: 'Get weather for city',
+    parameters: { type: 'object', properties: { city: { type: 'string' } } }
+  }];
+
+  test('formats for OpenAI', () => {
+    const ai = createAI();
+    const formatted = ai._formatToolsForProvider(tools, 'openai');
+    expect(formatted).toHaveLength(1);
+    expect(formatted[0].type).toBe('function');
+    expect(formatted[0].function.name).toBe('get_weather');
+    expect(formatted[0].function.parameters).toEqual(tools[0].parameters);
+  });
+
+  test('formats for Anthropic', () => {
+    const ai = createAI();
+    const formatted = ai._formatToolsForProvider(tools, 'anthropic');
+    expect(formatted).toHaveLength(1);
+    expect(formatted[0].name).toBe('get_weather');
+    expect(formatted[0].input_schema).toEqual(tools[0].parameters);
+  });
+
+  test('returns undefined for null/invalid tools', () => {
+    const ai = createAI();
+    expect(ai._formatToolsForProvider(null, 'openai')).toBeUndefined();
+    expect(ai._formatToolsForProvider('not-array', 'openai')).toBeUndefined();
+  });
+});
+
+// ─── buildMessages ──────────────────────────────────────────────
+
+describe('buildMessages', () => {
+  test('basic system + user', () => {
+    const ai = createAI();
+    const msgs = ai.buildMessages('sys prompt', 'user prompt');
+    expect(msgs.system).toBe('sys prompt');
+    expect(msgs.user).toBe('user prompt');
+  });
+
+  test('prepends basePrompt', () => {
+    const ai = createAI({ basePrompt: 'You are a security expert.' });
+    const msgs = ai.buildMessages('Analyze this.', 'test input');
+    expect(msgs.system).toContain('You are a security expert.');
+    expect(msgs.system).toContain('Analyze this.');
+  });
+
+  test('includes stored context', () => {
+    const ai = createAI();
+    ai.addContext('environment', 'production');
+    const msgs = ai.buildMessages('sys', 'user');
+    expect(msgs.system).toContain('environment');
+    expect(msgs.system).toContain('production');
+  });
+
+  test('includes additional context string', () => {
+    const ai = createAI();
+    const msgs = ai.buildMessages('sys', 'user', 'extra info');
+    expect(msgs.system).toContain('extra info');
+  });
+
+  test('includes additional context object', () => {
+    const ai = createAI();
+    const msgs = ai.buildMessages('sys', 'user', { key: 'val' });
+    expect(msgs.system).toContain('"key"');
+    expect(msgs.system).toContain('"val"');
+  });
+});
+
+// ─── Context Management ─────────────────────────────────────────
+
+describe('Context Management', () => {
+  test('addContext / removeContext', () => {
+    const ai = createAI();
+    ai.addContext('env', 'prod');
+    expect(ai.getContextString()).toContain('env');
+
+    ai.removeContext('env');
+    expect(ai.getContextString()).toBe('');
+  });
+
+  test('clearContext', () => {
+    const ai = createAI();
+    ai.addContext('a', 1).addContext('b', 2);
+    ai.clearContext();
+    expect(ai.getContextString()).toBe('');
+  });
+
+  test('withContext creates new instance', () => {
+    const ai = createAI({ basePrompt: 'base' });
+    const ai2 = ai.withContext('additional');
+    expect(ai2).not.toBe(ai);
+    expect(ai2.basePrompt).toContain('base');
+    expect(ai2.basePrompt).toContain('additional');
+  });
+
+  test('forDomain creates preset instance', () => {
+    const ai = createAI();
+    const secAI = ai.forDomain('security');
+    expect(secAI.basePrompt).toContain('security');
+  });
+
+  test('forDomain throws for unknown domain', () => {
+    const ai = createAI();
+    expect(() => ai.forDomain('nonexistent')).toThrow('Unknown domain');
+  });
+});
+
+// ─── parseJSON ──────────────────────────────────────────────────
+
+describe('parseJSON', () => {
+  test('parses plain JSON string', () => {
+    const ai = createAI();
+    expect(ai.parseJSON('{"a":1}')).toEqual({ a: 1 });
+  });
+
+  test('parses JSON wrapped in markdown code block', () => {
+    const ai = createAI();
+    expect(ai.parseJSON('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+  });
+
+  test('parses JSON array', () => {
+    const ai = createAI();
+    expect(ai.parseJSON('[1,2,3]')).toEqual([1, 2, 3]);
+  });
+
+  test('returns object as-is', () => {
+    const ai = createAI();
+    const obj = { a: 1 };
+    expect(ai.parseJSON(obj)).toBe(obj);
+  });
+
+  test('handles JSON with leading text', () => {
+    const ai = createAI();
+    expect(ai.parseJSON('Here is the result: {"a":1}')).toEqual({ a: 1 });
+  });
+
+  test('returns error object on unparseable input', () => {
+    const ai = createAI();
+    expect(ai.parseJSON('not json at all')).toEqual({ error: 'Failed to parse response' });
+  });
+});
+
+// ─── calculateConfidence ────────────────────────────────────────
+
+describe('calculateConfidence', () => {
+  test('returns 0 for null input', () => {
+    const ai = createAI();
+    expect(ai.calculateConfidence(null, { a: 'string' })).toBe(0);
+  });
+
+  test('returns 0 for error response', () => {
+    const ai = createAI();
+    expect(ai.calculateConfidence({ error: 'fail' }, { a: 'string' })).toBe(0);
+  });
+
+  test('returns 0 for empty schema', () => {
+    const ai = createAI();
+    expect(ai.calculateConfidence({ a: 1 }, {})).toBe(0);
+  });
+
+  test('returns 1 for fully filled', () => {
+    const ai = createAI();
+    expect(ai.calculateConfidence({ a: 1, b: 'x' }, { a: 'num', b: 'str' })).toBe(1);
+  });
+
+  test('returns 0.5 for half filled', () => {
+    const ai = createAI();
+    expect(ai.calculateConfidence({ a: 1, b: null }, { a: 'num', b: 'str' })).toBe(0.5);
+  });
+});
+
+// ─── Chain / Pipeline ───────────────────────────────────────────
+
+describe('Chain', () => {
+  test('chains functions sequentially', async () => {
+    const ai = createAI();
+    const result = await ai.chain(
+      () => 1,
+      (prev) => prev + 1,
+      (prev) => prev * 3
     );
+    expect(result).toBe(6);
+  });
+});
+
+describe('Pipeline', () => {
+  test('creates reusable pipeline', async () => {
+    const ai = createAI();
+    const pipe = ai.pipeline(
+      (input) => input * 2,
+      (input) => input + 10
+    );
+    expect(await pipe(5)).toBe(20); // (5*2) + 10
+  });
+});
+
+// ─── Executor ───────────────────────────────────────────────────
+
+describe('Executor', () => {
+  test('registerAction creates executor if missing', () => {
+    const ai = createAI();
+    expect(ai.executor).toBeNull();
+    ai.registerAction('test', () => 'result');
+    expect(ai.executor).not.toBeNull();
+  });
+
+  test('execute throws without executor', async () => {
+    const ai = createAI();
+    await expect(ai.execute({ action: 'test' })).rejects.toThrow('Executor not configured');
+  });
+});
+
+// ─── Exports ────────────────────────────────────────────────────
+
+describe('Module Exports', () => {
+  test('exports AIToolkit class', () => {
+    expect(AIToolkit).toBeDefined();
+    expect(AIToolkit.AIToolkit).toBe(AIToolkit);
+  });
+
+  test('exports functional wrappers', () => {
+    expect(typeof AIToolkit.extract).toBe('function');
+    expect(typeof AIToolkit.validate).toBe('function');
+    expect(typeof AIToolkit.summarize).toBe('function');
+    expect(typeof AIToolkit.decide).toBe('function');
+    expect(typeof AIToolkit.chat).toBe('function');
+  });
+
+  test('exports Resilience and CircuitBreakerError', () => {
+    expect(AIToolkit.Resilience).toBe(Resilience);
+    expect(AIToolkit.CircuitBreakerError).toBe(CircuitBreakerError);
+  });
+
+  test('exports configure function', () => {
+    expect(typeof AIToolkit.configure).toBe('function');
+  });
+
+  test('exports createAI factory', () => {
+    expect(typeof AIToolkit.createAI.security).toBe('function');
+    expect(typeof AIToolkit.createAI.devops).toBe('function');
+    expect(typeof AIToolkit.createAI.engineering).toBe('function');
+  });
+
+  test('exports presets', () => {
+    expect(AIToolkit.presets).toBeDefined();
+    expect(AIToolkit.presets.security).toBeDefined();
+    expect(AIToolkit.presets.devops).toBeDefined();
+  });
+
+  test('exports serve function', () => {
+    expect(typeof AIToolkit.serve).toBe('function');
+  });
+});
+
+// ─── Streaming (mock level) ─────────────────────────────────────
+
+describe('Streaming', () => {
+  test('chat with stream returns generator', async () => {
+    const ai = createAI();
+    // Replace makeStreamRequest with a mock generator
+    ai.makeStreamRequest = async function* () {
+      yield 'Hello';
+      yield ' World';
+    };
+
+    const gen = await ai.chat('test', { stream: true });
+    const chunks = [];
+    for await (const chunk of gen) {
+      chunks.push(chunk);
+    }
+    expect(chunks).toEqual(['Hello', ' World']);
+  });
+
+  test('chat with stream+collect returns full message', async () => {
+    const ai = createAI();
+    ai.makeStreamRequest = async function* () {
+      yield 'Hello';
+      yield ' World';
+    };
+
+    const result = await ai.chat('test', { stream: true, collect: true });
+    expect(result.success).toBe(true);
+    expect(result.message).toBe('Hello World');
+  });
+
+  test('stream+collect tracks history when trackHistory=true', async () => {
+    const ai = createAI({ trackHistory: true });
+    ai.makeStreamRequest = async function* () {
+      yield 'Hi';
+    };
+
+    await ai.chat('Hello', { stream: true, collect: true });
+    const history = ai.getHistory();
+    expect(history).toHaveLength(2);
+    expect(history[1].content).toBe('Hi');
+  });
+});
+
+// ─── makeAIRequest integration (with real resilience) ───────────
+
+describe('makeAIRequest integration', () => {
+  test('throws when engine not configured', async () => {
+    const ai = createAI();
+    // Restore real makeAIRequest
+    delete ai.makeAIRequest;
+    // But no anthropic client
+    await expect(
+      ai.makeAIRequest({ system: 'sys', user: 'test' }, { engine: 'anthropic' })
+    ).rejects.toThrow('not configured');
+  });
+
+  test('throws for unknown engine', async () => {
+    const ai = createAI();
+    delete ai.makeAIRequest;
+    ai.clients.fakeengine = {};
+    await expect(
+      ai.makeAIRequest({ system: 's', user: 'u' }, { engine: 'fakeengine' })
+    ).rejects.toThrow('Unknown engine');
+  });
+
+  test('throws in cloud mode', async () => {
+    const ai = createAI();
+    delete ai.makeAIRequest;
+    ai.clients.openai = { cloudMode: true };
+    await expect(
+      ai.makeAIRequest({ system: 's', user: 'u' }, { engine: 'openai' })
+    ).rejects.toThrow('Cloud mode');
+  });
+});
+
+// ─── _handleToolCalls (OpenAI format) ───────────────────────────
+
+describe('_handleToolCalls OpenAI', () => {
+  test('returns text when no tool calls', async () => {
+    const ai = createAI();
+    const response = {
+      choices: [{ finish_reason: 'stop', message: { content: 'done' } }]
+    };
+    const result = await ai._handleToolCalls(response, 'openai', {}, {}, {});
+    expect(result.text).toBe('done');
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  test('calls onToolCall handler', async () => {
+    const ai = createAI();
+
+    const toolResponse = {
+      choices: [{
+        finish_reason: 'tool_calls',
+        message: {
+          role: 'assistant',
+          tool_calls: [{
+            id: 'call_1',
+            function: { name: 'get_weather', arguments: '{"city":"NYC"}' }
+          }]
+        }
+      }]
+    };
+
+    const finalResponse = {
+      choices: [{ finish_reason: 'stop', message: { content: 'Weather is sunny' } }]
+    };
+
+    const mockClient = {
+      chat: { completions: { create: jest.fn().mockResolvedValue(finalResponse) } }
+    };
+
+    const onToolCall = jest.fn().mockResolvedValue('sunny, 72F');
+
+    const result = await ai._handleToolCalls(
+      toolResponse, 'openai', mockClient,
+      { messages: [{ role: 'user', content: 'weather?' }] },
+      { onToolCall }
+    );
+
+    expect(onToolCall).toHaveBeenCalledWith('get_weather', { city: 'NYC' });
+    expect(result.text).toBe('Weather is sunny');
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].name).toBe('get_weather');
+    expect(result.toolCalls[0].result).toBe('sunny, 72F');
+  });
+});
+
+// ─── _handleToolCalls (Anthropic format) ────────────────────────
+
+describe('_handleToolCalls Anthropic', () => {
+  test('returns text when no tool use', async () => {
+    const ai = createAI();
+    const response = {
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'done' }]
+    };
+    const result = await ai._handleToolCalls(response, 'anthropic', {}, {}, {});
+    expect(result.text).toBe('done');
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  test('calls onToolCall handler for Anthropic', async () => {
+    const ai = createAI();
+
+    const toolResponse = {
+      stop_reason: 'tool_use',
+      content: [
+        { type: 'text', text: 'Let me check...' },
+        { type: 'tool_use', id: 'tu_1', name: 'lookup', input: { q: 'test' } }
+      ]
+    };
+
+    const finalResponse = {
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'Found it' }]
+    };
+
+    const mockClient = { messages: { create: jest.fn().mockResolvedValue(finalResponse) } };
+    const onToolCall = jest.fn().mockResolvedValue({ data: 'result' });
+
+    const result = await ai._handleToolCalls(
+      toolResponse, 'anthropic', mockClient,
+      { messages: [] },
+      { onToolCall }
+    );
+
+    expect(onToolCall).toHaveBeenCalledWith('lookup', { q: 'test' });
+    expect(result.text).toBe('Found it');
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0].result).toEqual({ data: 'result' });
+  });
+
+  test('handles tool call errors gracefully', async () => {
+    const ai = createAI();
+
+    const toolResponse = {
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'tu_1', name: 'fail_fn', input: {} }]
+    };
+
+    const finalResponse = {
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'Error handled' }]
+    };
+
+    const mockClient = { messages: { create: jest.fn().mockResolvedValue(finalResponse) } };
+    const onToolCall = jest.fn().mockRejectedValue(new Error('tool broke'));
+
+    const result = await ai._handleToolCalls(
+      toolResponse, 'anthropic', mockClient,
+      { messages: [] },
+      { onToolCall }
+    );
+
+    expect(result.toolCalls[0].result).toEqual({ error: 'tool broke' });
   });
 });

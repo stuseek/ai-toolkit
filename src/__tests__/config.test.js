@@ -103,7 +103,7 @@ describe('ConfigLoader', () => {
     test('should warn when no engines configured', () => {
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-      loader.processConfig({});
+      loader.processConfig({ engines: {} });
 
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
@@ -112,7 +112,7 @@ describe('ConfigLoader', () => {
     test('should not warn when token is present', () => {
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-      loader.processConfig({ token: 'test-token' });
+      loader.processConfig({ token: 'test-token', engines: {} });
 
       expect(consoleSpy).not.toHaveBeenCalled();
       consoleSpy.mockRestore();

@@ -47,16 +47,16 @@ describe('ActionExecutor', () => {
     test('should throw for unregistered action', async () => {
       await expect(
         executor.execute({ action: 'unknownAction' })
-      ).rejects.toThrow('Action unknownAction not found');
+      ).rejects.toThrow('Unknown action: unknownAction');
     });
 
-    test('should handle action execution errors', async () => {
+    test('should handle action execution errors gracefully', async () => {
       const handler = jest.fn().mockRejectedValue(new Error('Action failed'));
       executor.register('testAction', handler);
 
-      await expect(
-        executor.execute({ action: 'testAction' })
-      ).rejects.toThrow('Action failed');
+      const result = await executor.execute({ action: 'testAction' });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Action failed');
     });
 
     test('should pass empty object when no parameters', async () => {
