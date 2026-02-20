@@ -276,6 +276,60 @@ const decision = await ai.decide(context, ['send_email', 'create_ticket']);
 const result = await ai.execute(decision);
 ```
 
+## HTTP server / microservice mode
+
+Same interface, over HTTP. Zero extra dependencies.
+
+### From code
+
+```javascript
+const { serve } = require('@stuseek/ai-toolkit');
+
+const server = serve({
+  engines: { anthropic: process.env.ANTHROPIC_API_KEY },
+  defaultEngine: 'anthropic',
+  port: 3000,
+  apiKey: 'my-secret'  // optional Bearer token auth
+});
+
+// The server also exposes the AIToolkit instance directly
+server.ai.chat('hello');  // still works as a library
+```
+
+### From CLI
+
+```bash
+# Set your keys
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Start the server
+npx @stuseek/ai-toolkit-serve --port 3000
+
+# Or with auth
+AI_TOOLKIT_API_KEY=secret npx @stuseek/ai-toolkit-serve
+```
+
+### Endpoints
+
+```bash
+# Extract
+curl -X POST http://localhost:3000/extract \
+  -H 'Content-Type: application/json' \
+  -d '{"data": "John is 30", "schema": {"name": "string", "age": "number"}}'
+
+# Chat
+curl -X POST http://localhost:3000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt": "Explain SQL injection"}'
+
+# Health check (includes circuit breaker status)
+curl http://localhost:3000/health
+```
+
+All endpoints accept the same options as the library methods. POST body fields map directly to method arguments — `data` and `schema` for extract, `prompt` for chat, etc.
+
+If `AI_TOOLKIT_API_KEY` is set, pass `Authorization: Bearer <key>` header.
+
 ## Environment variables
 
 ```bash
@@ -284,6 +338,12 @@ ANTHROPIC_API_KEY=sk-ant-...
 AI_DEFAULT_ENGINE=anthropic
 AI_MODEL_OPENAI=gpt-4o
 AI_MODEL_ANTHROPIC=claude-sonnet-4-5-20250929
+
+# Server mode
+AI_TOOLKIT_PORT=3000
+AI_TOOLKIT_HOST=0.0.0.0
+AI_TOOLKIT_API_KEY=my-secret     # require Bearer auth
+AI_TOOLKIT_CORS=*                # CORS origin
 ```
 
 ## TypeScript
@@ -297,7 +357,8 @@ import {
   DecideResult, ChatResult,
   ToolDefinition, ToolCallResult,
   Resilience, CircuitBreakerError,
-  ChatOptions, AIToolkitOptions
+  ChatOptions, AIToolkitOptions,
+  serve, ServeOptions, AIServer
 } from '@stuseek/ai-toolkit';
 ```
 

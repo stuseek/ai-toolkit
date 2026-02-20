@@ -1,6 +1,6 @@
 {
   "name": "@stuseek/ai-toolkit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "The 4 fundamental AI operations for building intelligent applications",
   "main": "src/index.js",
   "scripts": {
@@ -24,7 +24,8 @@
     "example:quick": "node examples/quick-start.js",
     "example:customer": "node examples/customer-support.js",
     "example:devops": "node examples/devops-incident.js",
-    "example:cicd": "node examples/cicd-analyzer.js"
+    "example:cicd": "node examples/cicd-analyzer.js",
+    "serve": "node bin/serve.js"
   },
   "keywords": [
     "ai",
@@ -72,6 +73,9 @@
     "example": "examples",
     "test": "test"
   },
+  "bin": {
+    "ai-toolkit-serve": "./bin/serve.js"
+  },
   "types": "./src/index.d.ts",
   "files": [
     "src/index.js",
@@ -79,7 +83,9 @@
     "src/telemetry.js",
     "src/executor.js",
     "src/resilience.js",
+    "src/server.js",
     "src/index.d.ts",
+    "bin/serve.js",
     "README.md",
     "LICENSE"
   ],

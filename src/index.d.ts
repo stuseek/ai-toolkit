@@ -334,4 +334,31 @@ export const createAI: {
   engineering(): AIToolkit;
 };
 
+export interface ServeOptions extends AIToolkitOptions {
+  /** Port to listen on (default: 3000) */
+  port?: number;
+  /** Bind address (default: 0.0.0.0) */
+  host?: string;
+  /** Require Bearer token auth */
+  apiKey?: string;
+  /** CORS origin (default: *) */
+  cors?: string;
+}
+
+import type { Server } from 'http';
+
+export interface AIServer extends Server {
+  /** The AIToolkit instance powering the server */
+  ai: AIToolkit;
+  /** Available route paths */
+  routes: string[];
+}
+
+/**
+ * Start an HTTP microservice exposing all AI primitives as endpoints.
+ * POST /extract, /validate, /summarize, /decide, /chat
+ * GET  /health
+ */
+export function serve(options?: ServeOptions): AIServer;
+
 export default AIToolkit;

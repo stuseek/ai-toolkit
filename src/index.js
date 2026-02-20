@@ -1213,6 +1213,9 @@ module.exports.createAI = createAI;
 module.exports.presets = PRESETS;
 module.exports.Resilience = Resilience;
 module.exports.CircuitBreakerError = CircuitBreakerError;
+module.exports.serve = function(options) {
+  return require('./server').serve(options);
+};
 
 // Default export
 module.exports.default = AIToolkit;
