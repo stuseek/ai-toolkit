@@ -367,7 +367,7 @@ function generateRunbook(incident, diagnosis, response) {
 /**
  * Generate monitoring checklist
  */
-function generateMonitoringChecklist(incident) {
+function generateMonitoringChecklist(_incident) {
   return {
     immediate: [
       'Error rate returning to normal',

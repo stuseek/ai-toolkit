@@ -15,7 +15,7 @@ class ActionExecutor {
     if (typeof handler !== 'function') {
       throw new Error(`Handler for action "${name}" must be a function`);
     }
-    
+
     if (this.registry.has(name)) {
       throw new Error(`Action ${name} already registered`);
     }

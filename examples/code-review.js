@@ -359,7 +359,7 @@ async function runExamples() {
       console.log(review.feedback);
 
       console.log('\n✓ Review Checklist:');
-      Object.entries(review.checklist).forEach(([item, status]) => {
+      Object.entries(review.checklist).forEach(([_item, status]) => {
         console.log(`  ${status}`);
       });
 

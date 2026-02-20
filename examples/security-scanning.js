@@ -1,5 +1,5 @@
 /**
- * Security Scanning Example using @aisec/ai-toolkit
+ * Security Scanning Example using @stuseek/ai-toolkit
  * Demonstrates how to use the 4 primitives for security analysis
  */
 

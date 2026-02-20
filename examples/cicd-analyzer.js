@@ -275,7 +275,7 @@ post {
       if (currentBuild.result == 'SUCCESS') {
         def coverage = sh(returnStdout: true, script: 'grep -o "[0-9]*%" coverage/index.html | head -1')
         if (coverage.toInteger() < 80) {
-          error("Coverage ${coverage.toString()} is below 80% threshold")
+          error("Coverage \${coverage.toString()} is below 80% threshold")
         }
       }
     }

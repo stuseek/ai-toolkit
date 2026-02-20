@@ -10,7 +10,7 @@ describe('ActionExecutor', () => {
   describe('register', () => {
     test('should register action handler', () => {
       const handler = jest.fn();
-      
+
       executor.register('testAction', handler, {
         description: 'Test action'
       });
@@ -97,7 +97,7 @@ describe('ActionExecutor', () => {
   describe('unregister', () => {
     test('should remove registered action', () => {
       executor.register('testAction', jest.fn());
-      
+
       const result = executor.unregister('testAction');
 
       expect(result).toBe(true);

@@ -32,12 +32,13 @@ module.exports = [
       }
     },
     rules: {
-      'no-unused-vars': ['error', { 
+      'no-unused-vars': ['error', {
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_' 
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_'
       }],
-      'no-console': ['warn', { 
-        allow: ['warn', 'error'] 
+      'no-console': ['warn', {
+        allow: ['warn', 'error']
       }],
       'prefer-const': 'error',
       'no-var': 'error',

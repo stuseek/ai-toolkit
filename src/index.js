@@ -13,6 +13,7 @@
 const { ConfigLoader } = require('./config');
 const { TelemetryClient } = require('./telemetry');
 const { ActionExecutor } = require('./executor');
+const { Resilience, CircuitBreakerError } = require('./resilience');
 
 // Global instance for functional usage
 let globalInstance = null;
@@ -113,6 +114,20 @@ class AIToolkit {
     this.debug = this.isPremium && this.config.debug;
 
     this.lastResult = null;
+
+    // Resilience: retry + circuit breaker + timeout
+    const retryOpts = this.config.retry || {};
+    this.resilience = new Resilience({
+      maxRetries: retryOpts.maxRetries ?? 2,
+      timeout: this.config.timeout ?? 30000,
+      circuitBreakerThreshold: this.config.circuitBreaker?.threshold ?? 5,
+      circuitBreakerResetMs: this.config.circuitBreaker?.resetAfterMs ?? 60000
+    });
+
+    // Conversation history
+    this.messages = [];
+    this.trackHistory = this.config.trackHistory ?? false;
+    this.maxHistoryTokens = this.config.maxHistoryTokens ?? 50000;
   }
 
   /**
@@ -140,10 +155,49 @@ class AIToolkit {
   }
 
   /**
+   * Add a message to conversation history
+   */
+  addMessage(role, content) {
+    this.messages.push({ role, content });
+    this._trimHistory();
+    return this;
+  }
+
+  /**
+   * Get conversation history
+   */
+  getHistory() {
+    return [...this.messages];
+  }
+
+  /**
+   * Clear conversation history
+   */
+  clearHistory() {
+    this.messages = [];
+    return this;
+  }
+
+  /**
+   * Trim history to stay within token budget (rough estimate: 4 chars = 1 token)
+   */
+  _trimHistory() {
+    const charsPerToken = 4;
+    const maxChars = this.maxHistoryTokens * charsPerToken;
+
+    while (this.messages.length > 0) {
+      const totalChars = this.messages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+      if (totalChars <= maxChars) break;
+      // Remove oldest message
+      this.messages.shift();
+    }
+  }
+
+  /**
    * Get formatted context string
    */
   getContextString() {
-    if (this.context.size === 0) return '';
+    if (this.context.size === 0) {return '';}
 
     const contextParts = [];
     for (const [key, value] of this.context) {
@@ -228,7 +282,8 @@ class AIToolkit {
 
     if (this.engines.anthropic) {
       try {
-        const Anthropic = require('@anthropic-ai/sdk');
+        const AnthropicModule = require('@anthropic-ai/sdk');
+        const Anthropic = AnthropicModule.default || AnthropicModule;
         this.clients.anthropic = new Anthropic({
           apiKey: this.engines.anthropic
         });
@@ -236,6 +291,119 @@ class AIToolkit {
         console.warn('Anthropic SDK not installed. Run: npm install @anthropic-ai/sdk');
       }
     }
+  }
+
+  /**
+   * Resolve model name — supports aliases (fast, balanced, powerful) and per-engine defaults
+   */
+  _resolveModel(model, engine) {
+    const defaults = { openai: 'gpt-4', anthropic: 'claude-sonnet-4-5-20250929' };
+    return this.config.models?.[model] || model || this.config.models?.[engine] || defaults[engine];
+  }
+
+  /**
+   * Format tools for the target provider
+   */
+  _formatToolsForProvider(tools, engine) {
+    if (!tools || !Array.isArray(tools)) return undefined;
+
+    if (engine === 'openai') {
+      return tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description || '',
+          parameters: t.parameters || { type: 'object', properties: {} }
+        }
+      }));
+    }
+
+    // Anthropic format
+    return tools.map(t => ({
+      name: t.name,
+      description: t.description || '',
+      input_schema: t.parameters || { type: 'object', properties: {} }
+    }));
+  }
+
+  /**
+   * Handle tool call loop for chat with tools
+   */
+  async _handleToolCalls(rawResponse, engine, client, requestParams, options) {
+    const maxRounds = 10;
+    const toolCalls = [];
+    let currentResponse = rawResponse;
+
+    for (let round = 0; round < maxRounds; round++) {
+      let pendingCalls;
+
+      if (engine === 'openai') {
+        const choice = currentResponse.choices[0];
+        if (choice.finish_reason !== 'tool_calls' || !choice.message.tool_calls?.length) {
+          return { text: choice.message.content || '', toolCalls };
+        }
+        pendingCalls = choice.message.tool_calls.map(tc => ({
+          id: tc.id,
+          name: tc.function.name,
+          parameters: JSON.parse(tc.function.arguments || '{}')
+        }));
+      } else {
+        // Anthropic
+        if (currentResponse.stop_reason !== 'tool_use') {
+          const textBlock = currentResponse.content.find(b => b.type === 'text');
+          return { text: textBlock?.text || '', toolCalls };
+        }
+        const toolBlocks = currentResponse.content.filter(b => b.type === 'tool_use');
+        pendingCalls = toolBlocks.map(b => ({
+          id: b.id,
+          name: b.name,
+          parameters: b.input || {}
+        }));
+      }
+
+      // Execute tool calls
+      const results = [];
+      for (const call of pendingCalls) {
+        let result;
+        try {
+          result = await options.onToolCall(call.name, call.parameters);
+        } catch (err) {
+          result = { error: err.message };
+        }
+        const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+        toolCalls.push({ name: call.name, parameters: call.parameters, result });
+        results.push({ id: call.id, result: resultStr });
+      }
+
+      // Send results back
+      if (engine === 'openai') {
+        const choice = currentResponse.choices[0];
+        requestParams.messages.push(choice.message);
+        for (const r of results) {
+          requestParams.messages.push({ role: 'tool', tool_call_id: r.id, content: r.result });
+        }
+        currentResponse = await client.chat.completions.create(requestParams);
+      } else {
+        // Anthropic
+        requestParams.messages.push({ role: 'assistant', content: currentResponse.content });
+        requestParams.messages.push({
+          role: 'user',
+          content: results.map(r => ({
+            type: 'tool_result',
+            tool_use_id: r.id,
+            content: r.result
+          }))
+        });
+        currentResponse = await client.messages.create(requestParams);
+      }
+    }
+
+    // Max rounds reached — return whatever we have
+    if (engine === 'openai') {
+      return { text: currentResponse.choices[0].message.content || '', toolCalls };
+    }
+    const textBlock = currentResponse.content.find(b => b.type === 'text');
+    return { text: textBlock?.text || '', toolCalls };
   }
 
   async makeAIRequest(messages, options = {}) {
@@ -248,45 +416,80 @@ class AIToolkit {
 
     const start = Date.now();
 
-    try {
-      let response;
-
+    const sdkCall = async () => {
       if (client.cloudMode) {
         throw new Error('Cloud mode requires AI Toolkit token. Get one at https://aitoolkit.test');
-      } else {
-        const { system, user } = messages;
+      }
 
-        switch (engine) {
+      const { system, user } = messages;
+      const resolvedModel = this._resolveModel(options.model, engine);
+
+      // Build conversation messages including history
+      const hasTools = options.tools && Array.isArray(options.tools) && options.onToolCall;
+
+      switch (engine) {
         case 'openai': {
-          const completion = await client.chat.completions.create({
-            model: options.model || this.config.models?.openai || 'gpt-4',
-            messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: user }
-            ],
+          const msgArray = [{ role: 'system', content: system }];
+          if (this.messages.length > 0) {
+            msgArray.push(...this.messages);
+          }
+          msgArray.push({ role: 'user', content: user });
+
+          const params = {
+            model: resolvedModel,
+            messages: msgArray,
             temperature: options.temperature || this.config.temperature || 0.3,
             max_tokens: options.maxTokens || this.config.maxTokens || 1000
-          });
-          response = completion.choices[0].message.content;
-          break;
+          };
+
+          if (hasTools) {
+            params.tools = this._formatToolsForProvider(options.tools, 'openai');
+          }
+
+          const completion = await client.chat.completions.create(params);
+
+          if (hasTools) {
+            const result = await this._handleToolCalls(completion, 'openai', client, params, options);
+            return { text: result.text, toolCalls: result.toolCalls };
+          }
+          return completion.choices[0].message.content;
         }
 
         case 'anthropic': {
-          const message = await client.messages.create({
-            model: options.model || this.config.models?.anthropic || 'claude-3-sonnet-20240229',
+          const msgArray = [];
+          if (this.messages.length > 0) {
+            msgArray.push(...this.messages);
+          }
+          msgArray.push({ role: 'user', content: user });
+
+          const params = {
+            model: resolvedModel,
             system,
-            messages: [{ role: 'user', content: user }],
+            messages: msgArray,
             max_tokens: options.maxTokens || this.config.maxTokens || 1000,
             temperature: options.temperature || this.config.temperature || 0.3
-          });
-          response = message.content[0].text;
-          break;
+          };
+
+          if (hasTools) {
+            params.tools = this._formatToolsForProvider(options.tools, 'anthropic');
+          }
+
+          const message = await client.messages.create(params);
+
+          if (hasTools) {
+            const result = await this._handleToolCalls(message, 'anthropic', client, params, options);
+            return { text: result.text, toolCalls: result.toolCalls };
+          }
+          return message.content[0].text;
         }
 
         default:
           throw new Error(`Unknown engine: ${engine}`);
-        }
       }
+    };
+
+    try {
+      const response = await this.resilience.execute(sdkCall);
 
       // Track telemetry
       if (this.telemetry) {
@@ -317,13 +520,77 @@ class AIToolkit {
   }
 
   /**
+   * Make a streaming request — returns an async generator
+   */
+  async *makeStreamRequest(messages, options = {}) {
+    const engine = options.engine || this.defaultEngine;
+    const client = this.clients[engine];
+
+    if (!client) {
+      throw new Error(`AI engine ${engine} not configured.`);
+    }
+    if (client.cloudMode) {
+      throw new Error('Cloud mode does not support streaming.');
+    }
+
+    const { system, user } = messages;
+    const resolvedModel = this._resolveModel(options.model, engine);
+
+    switch (engine) {
+      case 'openai': {
+        const msgArray = [{ role: 'system', content: system }];
+        if (this.messages.length > 0) msgArray.push(...this.messages);
+        msgArray.push({ role: 'user', content: user });
+
+        const stream = await client.chat.completions.create({
+          model: resolvedModel,
+          messages: msgArray,
+          temperature: options.temperature || this.config.temperature || 0.3,
+          max_tokens: options.maxTokens || this.config.maxTokens || 1000,
+          stream: true
+        });
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        }
+        break;
+      }
+
+      case 'anthropic': {
+        const msgArray = [];
+        if (this.messages.length > 0) msgArray.push(...this.messages);
+        msgArray.push({ role: 'user', content: user });
+
+        const stream = client.messages.stream({
+          model: resolvedModel,
+          system,
+          messages: msgArray,
+          max_tokens: options.maxTokens || this.config.maxTokens || 1000,
+          temperature: options.temperature || this.config.temperature || 0.3
+        });
+
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && event.delta?.text) {
+            yield event.delta.text;
+          }
+        }
+        break;
+      }
+
+      default:
+        throw new Error(`Unknown engine: ${engine}`);
+    }
+  }
+
+  /**
    * Parse JSON from AI response
    */
   parseJSON(response) {
     try {
       if (typeof response === 'object') {return response;}
 
-      let cleaned = response
+      const cleaned = response
         .replace(/```json\s*/gi, '')
         .replace(/```\s*/g, '')
         .trim();
@@ -349,7 +616,7 @@ class AIToolkit {
 
       if (isArray) {
         let depth = 0;
-        let start = firstArray;
+        const start = firstArray;
         for (let i = firstArray; i < cleaned.length; i++) {
           if (cleaned[i] === '[') {depth++;}
           if (cleaned[i] === ']') {depth--;}
@@ -359,7 +626,7 @@ class AIToolkit {
         }
       } else {
         let depth = 0;
-        let start = firstObject;
+        const start = firstObject;
         for (let i = firstObject; i < cleaned.length; i++) {
           if (cleaned[i] === '{') {depth++;}
           if (cleaned[i] === '}') {depth--;}
@@ -643,6 +910,119 @@ class AIToolkit {
   }
 
   /**
+   * 💬 CHAT - Conversational AI interaction
+   * Generate free-form conversational responses
+   * Supports tool use ({ tools, onToolCall }), streaming ({ stream: true }),
+   * and conversation history ({ trackHistory: true })
+   */
+  async chat(prompt, options = {}) {
+    const start = Date.now();
+    const { additionalContext, systemPrompt, stream, collect, trackHistory, tools, onToolCall, ...apiOptions } = options;
+
+    try {
+      // Build system message
+      const system = systemPrompt || this.basePrompt || 'You are a helpful AI assistant. Be conversational, clear, and concise.';
+
+      // Support string or message array
+      const userPrompt = typeof prompt === 'string'
+        ? prompt
+        : Array.isArray(prompt)
+          ? prompt.map(m => `${m.role}: ${m.content}`).join('\n')
+          : JSON.stringify(prompt);
+
+      const messages = this.buildMessages(system, userPrompt, additionalContext);
+
+      // Streaming path
+      if (stream) {
+        const generator = this.makeStreamRequest(messages, {
+          ...apiOptions,
+          operation: 'chat'
+        });
+
+        if (collect) {
+          let full = '';
+          for await (const chunk of generator) {
+            full += chunk;
+          }
+
+          const shouldTrack = trackHistory ?? this.trackHistory;
+          if (shouldTrack) {
+            this.addMessage('user', userPrompt);
+            this.addMessage('assistant', full);
+          }
+
+          return { success: true, message: full, confidence: 1.0 };
+        }
+
+        return generator;
+      }
+
+      // Standard (non-streaming) path
+      const requestOpts = {
+        ...apiOptions,
+        operation: 'chat'
+      };
+
+      // Pass tools through if provided
+      if (tools && onToolCall) {
+        requestOpts.tools = tools;
+        requestOpts.onToolCall = onToolCall;
+      }
+
+      const response = await this.makeAIRequest(messages, requestOpts);
+
+      // Tool use returns { text, toolCalls }
+      const isToolResponse = response && typeof response === 'object' && 'toolCalls' in response;
+      const messageText = isToolResponse ? response.text : response;
+
+      const result = {
+        success: true,
+        message: messageText,
+        confidence: 1.0
+      };
+
+      if (isToolResponse) {
+        result.toolCalls = response.toolCalls;
+      }
+
+      // Auto-track conversation history
+      const shouldTrack = trackHistory ?? this.trackHistory;
+      if (shouldTrack) {
+        this.addMessage('user', userPrompt);
+        this.addMessage('assistant', messageText);
+      }
+
+      // Store for chaining
+      this.lastResult = result;
+
+      // Telemetry
+      if (this.telemetry) {
+        this.telemetry.track('chat', {
+          duration: Date.now() - start,
+          promptLength: userPrompt.length,
+          responseLength: messageText?.length || 0,
+          success: true
+        });
+      }
+
+      // Premium logging
+      if (this.logging) {
+        this.log('chat', { prompt: userPrompt.substring(0, 100), result });
+      }
+
+      return result;
+
+    } catch (error) {
+      return {
+        success: false,
+        message: null,
+        confidence: 0,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * 🔄 CHAIN - Compose multiple operations
    */
   async chain(...operations) {
@@ -720,7 +1100,7 @@ class AIToolkit {
       `Original: ${JSON.stringify(originalData)}\n` +
       `Schema: ${JSON.stringify(schema)}\n` +
       `Extracted: ${JSON.stringify(extracted)}\n\n` +
-      `Is this correct? Return: { "isValid": boolean, "score": 0-1, "issues": [] }`;
+      'Is this correct? Return: { "isValid": boolean, "score": 0-1, "issues": [] }';
 
     const response = await this.makeAIRequest({ system, user }, {
       operation: 'validate_extraction'
@@ -739,7 +1119,7 @@ class AIToolkit {
     if (schemaKeys.length === 0) {return 0;}
 
     let filledCount = 0;
-    let totalCount = schemaKeys.length;
+    const totalCount = schemaKeys.length;
 
     for (const key of schemaKeys) {
       const value = extracted[key];
@@ -794,6 +1174,7 @@ const extract = (data, schema, options) => getGlobalInstance().extract(data, sch
 const validate = (criteria, subject, reference, options) => getGlobalInstance().validate(criteria, subject, reference, options);
 const summarize = (content, options) => getGlobalInstance().summarize(content, options);
 const decide = (context, actions, options) => getGlobalInstance().decide(context, actions, options);
+const chat = (prompt, options) => getGlobalInstance().chat(prompt, options);
 const execute = (decision) => getGlobalInstance().execute(decision);
 
 /**
@@ -825,10 +1206,13 @@ module.exports.extract = extract;
 module.exports.validate = validate;
 module.exports.summarize = summarize;
 module.exports.decide = decide;
+module.exports.chat = chat;
 module.exports.execute = execute;
 module.exports.configure = configure;
 module.exports.createAI = createAI;
 module.exports.presets = PRESETS;
+module.exports.Resilience = Resilience;
+module.exports.CircuitBreakerError = CircuitBreakerError;
 
 // Default export
 module.exports.default = AIToolkit;

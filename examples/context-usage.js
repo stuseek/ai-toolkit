@@ -3,51 +3,51 @@
  */
 
 const AIToolkit = require('../src/index');
-const { extract, validate, summarize, decide } = require('../src/index');
+const { extract, validate, summarize: _summarize, decide: _decide } = require('../src/index');
 
 async function demonstrateContextUsage() {
-  
+
   // ============================================
   // STATEFUL MODE - Using class instance
   // ============================================
   console.log('=== STATEFUL MODE ===\n');
-  
+
   const ai = new AIToolkit({
     basePrompt: 'You are analyzing customer data for a SaaS company',
     engines: { openai: process.env.OPENAI_API_KEY }
   });
-  
+
   // Add persistent context
   ai.addContext('company', { name: 'TechCorp', industry: 'Software' });
   ai.addContext('user', { role: 'analyst', department: 'Customer Success' });
-  
+
   // All operations will include this context
-  const customerData = "Customer complained about slow response times and wants refund";
-  
+  const customerData = 'Customer complained about slow response times and wants refund';
+
   const extracted1 = await ai.extract(customerData, {
     issue: 'string',
     sentiment: 'string',
     request: 'string'
   });
   console.log('Stateful Extract:', extracted1);
-  
+
   // Add more context for specific analysis
   ai.addContext('customerTier', 'premium');
-  
+
   const validated1 = await ai.validate(
     'Is this a high-priority issue?',
     extracted1.data
   );
   console.log('Stateful Validate:', validated1);
-  
+
   // Remove context when done
   ai.removeContext('customerTier');
-  
+
   // ============================================
   // STATELESS MODE - Using functions directly
   // ============================================
   console.log('\n=== STATELESS MODE ===\n');
-  
+
   // Pass context per operation
   const extracted2 = await extract(customerData, {
     issue: 'string',
@@ -60,7 +60,7 @@ async function demonstrateContextUsage() {
     }
   });
   console.log('Stateless Extract:', extracted2);
-  
+
   const validated2 = await validate(
     'Is this a high-priority issue?',
     extracted2.data,
@@ -74,12 +74,12 @@ async function demonstrateContextUsage() {
     }
   );
   console.log('Stateless Validate:', validated2);
-  
+
   // ============================================
   // MIXED MODE - Stateful with per-operation context
   // ============================================
   console.log('\n=== MIXED MODE ===\n');
-  
+
   // Use stateful instance but add extra context for specific operation
   const summary = await ai.summarize(
     { issue: extracted1.data, validation: validated1 },
@@ -90,14 +90,14 @@ async function demonstrateContextUsage() {
     }
   );
   console.log('Mixed Mode Summary:', summary);
-  
+
   // ============================================
   // DECISION WITH FULL CONTEXT
   // ============================================
   console.log('\n=== DECISION WITH CONTEXT ===\n');
-  
+
   const decision = await ai.decide(
-    { 
+    {
       customer: extracted1.data,
       priority: validated1,
       summary: summary

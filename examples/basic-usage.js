@@ -84,7 +84,7 @@ async function main() {
     async (result) => ai.summarize(result),
     async (result) => ai.decide(result, ['invest', 'pass', 'investigate_further'])
   );
-  
+
   const workflowResult = await pipeline(newsArticle);
   console.log('Final Decision:', workflowResult.action);
   console.log('Reasoning:', workflowResult.reasoning);

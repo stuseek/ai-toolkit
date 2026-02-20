@@ -11,6 +11,24 @@ export interface BaseOptions {
   additionalContext?: string | Record<string, unknown>;
 }
 
+export interface RetryOptions {
+  maxRetries?: number;
+}
+
+export interface CircuitBreakerOptions {
+  threshold?: number;
+  resetAfterMs?: number;
+}
+
+export interface ModelAliases {
+  openai?: string;
+  anthropic?: string;
+  fast?: string;
+  balanced?: string;
+  powerful?: string;
+  [alias: string]: string | undefined;
+}
+
 export interface AIToolkitOptions {
   engines?: {
     openai?: string;
@@ -30,6 +48,30 @@ export interface AIToolkitOptions {
   logging?: boolean;
   audit?: boolean;
   debug?: boolean;
+  /** Model aliases and per-engine defaults */
+  models?: ModelAliases;
+  /** Retry configuration */
+  retry?: RetryOptions;
+  /** Request timeout in milliseconds (default 30000) */
+  timeout?: number;
+  /** Circuit breaker configuration */
+  circuitBreaker?: CircuitBreakerOptions;
+  /** Enable automatic conversation history tracking for chat() */
+  trackHistory?: boolean;
+  /** Max tokens to keep in conversation history (default 50000) */
+  maxHistoryTokens?: number;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description?: string;
+  parameters?: Record<string, any>;
+}
+
+export interface ToolCallResult {
+  name: string;
+  parameters: Record<string, any>;
+  result: any;
 }
 
 export interface ExtractOptions extends BaseOptions {
@@ -44,6 +86,21 @@ export interface SummarizeOptions extends BaseOptions {
 }
 
 export interface DecideOptions extends BaseOptions {}
+
+export interface ChatOptions extends BaseOptions {
+  /** Custom system prompt for the conversation */
+  systemPrompt?: string;
+  /** Tools available for the AI to call */
+  tools?: ToolDefinition[];
+  /** Callback invoked when the AI makes a tool call */
+  onToolCall?: (name: string, parameters: Record<string, any>) => Promise<any>;
+  /** Enable streaming mode — returns async generator */
+  stream?: boolean;
+  /** When streaming, collect all chunks and return a ChatResult instead of a generator */
+  collect?: boolean;
+  /** Override constructor-level trackHistory for this call */
+  trackHistory?: boolean;
+}
 
 export interface ExtractResult {
   success: boolean;
@@ -79,24 +136,81 @@ export interface DecideResult {
   error?: string;
 }
 
+export interface ChatResult {
+  success: boolean;
+  message: string | null;
+  confidence: number;
+  toolCalls?: ToolCallResult[];
+  error?: string;
+}
+
+export interface ResilienceStats {
+  failures: number;
+  tripped: boolean;
+  totalSkipped: number;
+  tripTime: number | null;
+}
+
+export declare class CircuitBreakerError extends Error {
+  name: 'CircuitBreakerError';
+  failures: number;
+  totalSkipped: number;
+}
+
+export declare class Resilience {
+  constructor(options?: {
+    maxRetries?: number;
+    timeout?: number;
+    circuitBreakerThreshold?: number;
+    circuitBreakerResetMs?: number;
+  });
+  execute<T>(fn: () => Promise<T>): Promise<T>;
+  isTripped(): boolean;
+  reset(): void;
+  recordSuccess(): void;
+  recordFailure(): void;
+  getStats(): ResilienceStats;
+}
+
 export declare class AIToolkit {
   constructor(options?: AIToolkitOptions);
-  
+
+  /** Resilience instance (retry + circuit breaker + timeout) */
+  resilience: Resilience;
+
+  /** Conversation history messages */
+  messages: Array<{ role: string; content: string }>;
+
   /**
    * Add context for stateful mode
    */
   addContext(key: string, value: any): this;
-  
+
   /**
    * Remove context
    */
   removeContext(key: string): this;
-  
+
   /**
    * Clear all context
    */
   clearContext(): this;
-  
+
+  /**
+   * Add a message to conversation history
+   */
+  addMessage(role: string, content: string): this;
+
+  /**
+   * Get a copy of the conversation history
+   */
+  getHistory(): Array<{ role: string; content: string }>;
+
+  /**
+   * Clear conversation history
+   */
+  clearHistory(): this;
+
   /**
    * Extract structured information from unstructured data
    */
@@ -105,7 +219,7 @@ export declare class AIToolkit {
     schema: Record<string, any>,
     options?: ExtractOptions
   ): Promise<ExtractResult>;
-  
+
   /**
    * Validate data against criteria
    */
@@ -115,7 +229,7 @@ export declare class AIToolkit {
     reference?: any,
     options?: ValidateOptions
   ): Promise<ValidateResult>;
-  
+
   /**
    * Summarize content into key insights
    */
@@ -123,7 +237,7 @@ export declare class AIToolkit {
     content: any,
     options?: SummarizeOptions
   ): Promise<SummarizeResult>;
-  
+
   /**
    * Make intelligent decision from available actions
    */
@@ -132,27 +246,43 @@ export declare class AIToolkit {
     actions: string[],
     options?: DecideOptions
   ): Promise<DecideResult>;
-  
+
+  /**
+   * Conversational AI interaction with optional tool use and streaming
+   */
+  chat(
+    prompt: string | Array<{ role: string; content: string }>,
+    options?: ChatOptions & { stream?: false; collect?: false }
+  ): Promise<ChatResult>;
+  chat(
+    prompt: string | Array<{ role: string; content: string }>,
+    options: ChatOptions & { stream: true; collect: true }
+  ): Promise<ChatResult>;
+  chat(
+    prompt: string | Array<{ role: string; content: string }>,
+    options: ChatOptions & { stream: true; collect?: false }
+  ): Promise<AsyncGenerator<string, void, unknown>>;
+
   /**
    * Execute registered action
    */
   execute(decision: DecideResult): Promise<any>;
-  
+
   /**
    * Register action for execution
    */
   registerAction(name: string, handler: Function, metadata?: any): this;
-  
+
   /**
    * Create pipeline for chaining operations
    */
   pipeline(...steps: Function[]): (input: any) => Promise<any>;
-  
+
   /**
    * Create new instance with additional context
    */
   withContext(additionalPrompt: string): AIToolkit;
-  
+
   /**
    * Create specialized instance for domain
    */
@@ -183,6 +313,11 @@ export function decide(
   actions?: string[],
   options?: DecideOptions
 ): Promise<DecideResult>;
+
+export function chat(
+  prompt: string | Array<{ role: string; content: string }>,
+  options?: ChatOptions
+): Promise<ChatResult>;
 
 export function configure(options: AIToolkitOptions): AIToolkit;
 

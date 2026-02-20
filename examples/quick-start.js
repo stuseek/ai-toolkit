@@ -6,7 +6,7 @@
 // ============================================
 // Method 1: Direct function imports (simplest)
 // ============================================
-const { extract, validate, summarize, decide, configure } = require('ai-toolkit');
+const { extract, validate, summarize, decide, configure } = require('@stuseek/ai-toolkit');
 
 async function functionalExample() {
   // Configure once (optional - will use env vars by default)
@@ -39,7 +39,7 @@ async function functionalExample() {
 // ============================================
 // Method 2: Class instance (more control)
 // ============================================
-const AIToolkit = require('@aisec/ai-toolkit');
+const AIToolkit = require('@stuseek/ai-toolkit');
 
 async function classExample() {
   const ai = new AIToolkit({
@@ -61,8 +61,8 @@ async function classExample() {
 // ============================================
 // Method 3: ES6 imports (modern)
 // ============================================
-// import { extract, validate, summarize, decide } from '@aisec/ai-toolkit';
-// import AIToolkit from '@aisec/ai-toolkit';
+// import { extract, validate, summarize, decide } from '@stuseek/ai-toolkit';
+// import AIToolkit from '@stuseek/ai-toolkit';
 
 // ============================================
 // Method 4: With action executor
